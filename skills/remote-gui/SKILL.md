@@ -1,7 +1,7 @@
 ---
 name: remote-gui
-description: Operate GUI applications on headless Linux servers via SSH using virtual display, screenshots, and xdotool automation
-author: Zhou Qishun, Claude
+description: Operate GUI applications on headless Linux servers via SSH using virtual display, screenshots, and xdotool automation. Auto-detects and fixes common issues.
+author: Jope Miler, Claude
 version: 1.0.0
 tags: [gui, remote, ssh, xvfb, xdotool, automation, headless]
 ---
@@ -16,90 +16,132 @@ Enables Claude Code to see and interact with GUI applications on remote headless
 - Examples: VPN clients, IDEs, database GUIs, file managers, browser-based tools
 - The application has no CLI alternative
 
-## Prerequisites
+## Auto-Setup Flow
 
-The skill will auto-install these on the remote server (requires `sudo`):
+When this skill is triggered, Claude should automatically:
 
-- `Xvfb` — Virtual framebuffer (fake display)
-- `fluxbox` — Lightweight window manager
-- `scrot` — Screenshot tool
-- `xdotool` — Mouse/keyboard automation
-- `imagemagick` — Image processing (optional)
+1. **Check and install dependencies** (if missing):
+```bash
+# Check what's installed
+which Xvfb xdotool scrot fluxbox 2>/dev/null
 
-## How it works
-
+# Install missing packages (auto-detect package manager)
+if command -v apt &>/dev/null; then
+    echo 'PASSWORD' | sudo -S apt install -y xvfb fluxbox scrot xdotool imagemagick
+elif command -v yum &>/dev/null; then
+    echo 'PASSWORD' | sudo -S yum install -y xorg-x11-server-Xvfb fluxbox scrot xdotool ImageMagick
+fi
 ```
-1. SSH to server
-2. Start Xvfb virtual display on :99
-3. Start fluxbox window manager
-4. Launch target GUI application
-5. Loop:
-   a. scrot takes screenshot → SCP to local
-   b. Claude reads screenshot (multimodal vision)
-   c. Claude determines action (click coordinates, text to type)
-   d. xdotool executes the action
-   e. Back to (a) to verify
+
+2. **Check if virtual display is already running** (don't start duplicates):
+```bash
+# Check existing Xvfb
+ps aux | grep Xvfb | grep -v grep
+# If not running, start it:
+Xvfb :99 -screen 0 1280x720x24 &>/dev/null &
+export DISPLAY=:99
+```
+
+3. **Check if window manager is running** (fixes black screenshot):
+```bash
+# If fluxbox not running → screenshots will be black!
+ps aux | grep fluxbox | grep -v grep || fluxbox &>/dev/null &
+sleep 2
+```
+
+4. **Launch the target GUI app**
+5. **Enter screenshot-action loop**
+
+## Auto-Fix: Black Screenshot
+
+If screenshot is all black, Claude should automatically:
+```bash
+# 1. Check if fluxbox is running
+if ! pgrep -x fluxbox > /dev/null; then
+    export DISPLAY=:99
+    fluxbox &>/dev/null &
+    sleep 2
+fi
+
+# 2. Check if the app window exists
+xdotool search --name "" | head -5
+# If no windows → app didn't start, re-launch it
+
+# 3. Retry screenshot
+scrot /tmp/screen.png
+```
+
+## Auto-Fix: App Won't Launch
+
+```bash
+# Check DISPLAY is set
+echo $DISPLAY  # Should be :99
+
+# Check Xvfb is running
+pgrep Xvfb || (Xvfb :99 -screen 0 1280x720x24 &>/dev/null &)
+
+# Check app error output
+/path/to/app 2>&1 | head -20
+# Fix missing libraries, permissions, etc.
+```
+
+## Auto-Fix: Click Misses Target
+
+```bash
+# Window may have moved. Take fresh screenshot and recalculate coordinates.
+scrot /tmp/screen_fresh.png
+# Re-read screenshot and find new button position
 ```
 
 ## Commands Reference
 
-### Setup virtual display
+### Setup
 ```bash
-# Start virtual framebuffer (1280x720, 24-bit color)
 Xvfb :99 -screen 0 1280x720x24 &>/dev/null &
 export DISPLAY=:99
-
-# Start window manager (required for proper window rendering)
 fluxbox &>/dev/null &
 ```
 
-### Launch and interact
+### Screenshot
 ```bash
-# Launch GUI app
-/path/to/app &>/dev/null &
-sleep 3
-
-# Take screenshot
 scrot /tmp/screenshot.png
-
-# Mouse operations
-xdotool mousemove X Y          # Move mouse to coordinates
-xdotool click 1                # Left click
-xdotool click 3                # Right click
-xdotool mousemove X Y click 1  # Move and click
-
-# Keyboard operations
-xdotool type 'text to type'              # Type text
-xdotool type --delay 50 'slow typing'    # Type with delay between keys
-xdotool key Return                        # Press Enter
-xdotool key Tab                           # Press Tab
-xdotool key ctrl+a                        # Ctrl+A (select all)
-xdotool key ctrl+c                        # Ctrl+C (copy)
-
-# Window operations
-xdotool search --name "Window Title"      # Find window by title
-xdotool windowactivate WINDOW_ID          # Bring window to front
+scp server:/tmp/screenshot.png /local/path/
 ```
 
-### Transfer screenshot
+### Mouse
 ```bash
-# Download screenshot to local for Claude to read
-scp server:/tmp/screenshot.png /local/path/screenshot.png
+xdotool mousemove X Y          # Move to coordinates
+xdotool click 1                # Left click
+xdotool click 3                # Right click
+xdotool click --repeat 2 1     # Double click
+xdotool mousemove X Y click 1  # Move and click in one command
+xdotool click 4                # Scroll up
+xdotool click 5                # Scroll down
+```
+
+### Keyboard
+```bash
+xdotool type 'text'                  # Type text
+xdotool type --delay 50 'slow text'  # Type with delay (for slow apps)
+xdotool key Return                    # Enter
+xdotool key Tab                       # Tab
+xdotool key ctrl+a                    # Select all
+xdotool key ctrl+c                    # Copy
+xdotool key ctrl+v                    # Paste
+xdotool key Escape                    # Escape
+xdotool key BackSpace                 # Backspace
+```
+
+### Window Management
+```bash
+xdotool search --name "Window Title"  # Find window by title
+xdotool windowactivate WINDOW_ID      # Focus window
+xdotool getactivewindow                # Get current window ID
 ```
 
 ## Limitations
 
-- Screenshot-based: ~3-5 seconds per action cycle (screenshot + transfer + process)
-- Cannot read text that's too small in the screenshot (increase resolution if needed)
-- Requires `sudo` for initial package installation
-- Window manager must be running for proper widget rendering
+- ~3-5 seconds per action cycle
+- Requires sudo for initial package installation
 - No audio support
-
-## Troubleshooting
-
-| Issue | Solution |
-|-------|----------|
-| Black screenshot | Start `fluxbox` window manager |
-| App doesn't launch | Check `DISPLAY=:99` is exported |
-| Click misses target | Take fresh screenshot, coordinates may have shifted |
-| No packages available | Server needs internet access or pre-installed packages |
+- Very small text may be hard to read (use higher resolution: `1920x1080x24`)

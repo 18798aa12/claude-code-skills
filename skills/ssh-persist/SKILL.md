@@ -1,119 +1,134 @@
 ---
 name: ssh-persist
-description: Automated SSH key deployment and persistent connection management for reliable remote server access
-author: Zhou Qishun, Claude
+description: Automated SSH key deployment and persistent connection management. Auto-detects and fixes permission issues, immutable flags, and connection problems.
+author: Jope Miler, Claude
 version: 1.0.0
 tags: [ssh, key, authentication, persistent, connection, keepalive]
 ---
 
 # SSH Persistent Connection
 
-Automates SSH key-based authentication setup and optimizes connection reliability.
+Automates SSH key-based authentication setup and optimizes connection reliability. Automatically detects and fixes common SSH issues.
 
 ## When to use
 
-- First time connecting to a new server (set up passwordless auth)
-- Frequent SSH disconnections or timeouts
-- Getting locked out by fail2ban due to repeated password attempts
-- Want faster SSH connections with host aliases
+- First time connecting to a new server
+- SSH keeps asking for password
+- Connections frequently drop or timeout
+- Getting locked out by fail2ban
 
-## What it does
+## Auto-Setup Flow
 
-### 1. SSH Key Setup
+When this skill is triggered, Claude should automatically handle the entire process:
 
-Checks for existing Ed25519 key or generates a new one:
-
+### Step 1: Check/Generate SSH Key
 ```bash
-# Check existing
-ls ~/.ssh/id_ed25519.pub
-
-# Generate if missing
-ssh-keygen -t ed25519 -C "user@host" -f ~/.ssh/id_ed25519 -N ""
+# Check existing key
+if [ -f ~/.ssh/id_ed25519.pub ]; then
+    echo "Key exists"
+    cat ~/.ssh/id_ed25519.pub
+else
+    ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "$(whoami)@$(hostname)"
+fi
 ```
 
-### 2. Key Deployment
-
-Copies public key to remote server, handling common issues:
-
+### Step 2: Deploy Key to Server (with auto-fix)
 ```bash
-# Standard method
-ssh-copy-id -i ~/.ssh/id_ed25519.pub user@server
+# Try standard method first
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@server 2>&1
 
-# If authorized_keys has immutable flag (common on shared servers)
-ssh user@server "sudo chattr -i ~/.ssh/authorized_keys"
-cat ~/.ssh/id_ed25519.pub | ssh user@server "cat >> ~/.ssh/authorized_keys"
-ssh user@server "sudo chattr +i ~/.ssh/authorized_keys"
-
-# If .ssh directory has wrong owner
-ssh user@server "sudo chown user:user ~/.ssh ~/.ssh/authorized_keys"
+# If that fails, try manual method
+cat ~/.ssh/id_ed25519.pub | ssh user@server "cat >> ~/.ssh/authorized_keys" 2>&1
 ```
 
-### 3. SSH Config
-
-Creates optimized `~/.ssh/config` entry:
-
+### Auto-Fix: Permission Denied on authorized_keys
+```bash
+# Check file attributes
+ssh user@server "lsattr ~/.ssh/authorized_keys 2>/dev/null"
+# If immutable flag (i) is set:
+ssh user@server "echo 'PASSWORD' | sudo -S chattr -i ~/.ssh/authorized_keys"
+# Write key
+PUB=$(cat ~/.ssh/id_ed25519.pub)
+ssh user@server "echo '$PUB' >> ~/.ssh/authorized_keys"
+# Restore immutable
+ssh user@server "echo 'PASSWORD' | sudo -S chattr +i ~/.ssh/authorized_keys"
 ```
-Host myserver
-    HostName 10.0.0.1
-    User myuser
+
+### Auto-Fix: Wrong Owner on .ssh Directory
+```bash
+# Check ownership
+ssh user@server "ls -la ~/.ssh/"
+# If owned by different user:
+ssh user@server "echo 'PASSWORD' | sudo -S chown user:user ~/.ssh ~/.ssh/authorized_keys"
+```
+
+### Auto-Fix: Wrong Permissions
+```bash
+ssh user@server "chmod 700 ~/.ssh; chmod 600 ~/.ssh/authorized_keys"
+```
+
+### Step 3: Configure SSH Config
+```bash
+# Check if host already configured
+grep -q "Host ALIAS" ~/.ssh/config 2>/dev/null
+
+# Add or update config
+cat >> ~/.ssh/config << EOF
+Host ALIAS
+    HostName SERVER_IP
+    User USERNAME
     IdentityFile ~/.ssh/id_ed25519
-    ServerAliveInterval 15      # Send keepalive every 15 seconds
-    ServerAliveCountMax 20      # Allow 20 missed keepalives before disconnect
-    ConnectTimeout 30           # 30 second connection timeout
-    TCPKeepAlive yes            # Enable TCP-level keepalive
+    ServerAliveInterval 15
+    ServerAliveCountMax 20
+    ConnectTimeout 30
+    TCPKeepAlive yes
+EOF
 ```
 
-### 4. Connection Test
-
+### Step 4: Verify
 ```bash
-# Verify passwordless auth works
-ssh myserver "echo OK; hostname"
+# Test passwordless connection
+ssh ALIAS "echo 'Key auth OK'; hostname"
 
-# Measure connection speed
-time ssh myserver "echo connected"
+# Measure speed
+time ssh ALIAS "echo connected"
 ```
 
-## Configuration Options
+## Auto-Fix: fail2ban Lockout
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `ServerAliveInterval` | 15 | Seconds between keepalive packets |
-| `ServerAliveCountMax` | 20 | Max missed keepalives before disconnect |
-| `ConnectTimeout` | 30 | Connection timeout in seconds |
-| `TCPKeepAlive` | yes | Enable TCP keepalive |
+If previous password attempts triggered fail2ban:
+```bash
+# Wait 30-60 minutes for auto-unban
+# Or if you have sudo on the server via another path:
+ssh other-user@server "sudo fail2ban-client set sshd unbanip YOUR_IP"
+```
 
-## Common Issues and Solutions
+After fixing, key-based auth prevents future lockouts (no failed password attempts).
 
-| Problem | Cause | Solution |
-|---------|-------|----------|
-| `Permission denied (publickey)` | Key not deployed correctly | Re-run key deployment |
-| `authorized_keys: Operation not permitted` | File has immutable attribute | `sudo chattr -i` before writing |
-| `.ssh owned by wrong user` | Admin created the directory | `sudo chown user:user ~/.ssh` |
-| Connection drops after idle | No keepalive configured | Add `ServerAliveInterval 15` |
-| `fail2ban` blocking IP | Too many password attempts | Switch to key auth (no passwords) |
-| Windows ControlMaster fails | Windows SSH doesn't support Unix sockets | Don't use ControlMaster on Windows, rely on key auth speed |
+## Configuration Reference
+
+```
+Host <alias>
+    HostName <ip>              # Server IP or domain
+    User <username>            # SSH username
+    Port <port>                # Default: 22
+    IdentityFile <key>         # Private key path
+    ServerAliveInterval 15     # Keepalive interval (seconds)
+    ServerAliveCountMax 20     # Max missed keepalives
+    ConnectTimeout 30          # Connection timeout
+    TCPKeepAlive yes           # TCP keepalive
+
+    # Linux/macOS only:
+    ControlMaster auto
+    ControlPath ~/.ssh/cm-%r@%h:%p
+    ControlPersist 4h
+```
 
 ## Platform Notes
 
-### Windows (Git Bash / MSYS2)
-
-- SSH ControlMaster/ControlPersist does **not** work reliably
-- Key-based auth + keepalive is the best available solution
-- Connection time: ~3-4 seconds per command
-
-### Linux/macOS
-
-- Full ControlMaster support available:
-  ```
-  ControlMaster auto
-  ControlPath ~/.ssh/cm-%r@%h:%p
-  ControlPersist 4h
-  ```
-- First connection: ~3 seconds, subsequent: <0.1 seconds
-
-## Security Notes
-
-- Uses Ed25519 keys (most secure and fastest SSH key type)
-- Never stores passwords in files or scripts
-- Key deployment restores immutable flags after modification
-- Compatible with fail2ban (key auth doesn't trigger lockout)
+| Feature | Linux/macOS | Windows |
+|---------|-------------|---------|
+| Key auth | Full | Full |
+| ControlMaster | Full (~0.1s) | Not supported |
+| Keepalive | Full | Full |
+| Speed | ~0.1s reuse / ~2s new | ~3-4s |

@@ -1,217 +1,185 @@
 ---
 name: tailscale-mesh
-description: Tailscale mesh networking setup — device joining, exit node configuration, SSH access across Windows/macOS/Linux
-author: Zhou Qishun, Claude
+description: Tailscale mesh networking — cross-platform SSH, exit nodes, device management. Auto-configures and fixes connectivity issues.
+author: Jope Miler, Claude
 version: 1.0.0
 tags: [tailscale, vpn, mesh, networking, exit-node, ssh, cross-platform]
 ---
 
 # Tailscale Mesh Networking
 
-Set up and manage Tailscale mesh networks: join devices, configure exit nodes, enable SSH access across Windows, macOS, and Linux.
+Set up and manage Tailscale mesh networks. Automatically configures cross-platform SSH access and exit nodes, and fixes common connectivity issues.
 
 ## When to use
 
-- Setting up a new device in a Tailscale network
-- Configuring a server as an exit node (route traffic through it)
-- Enabling SSH access between devices via Tailscale
-- Troubleshooting Tailscale connectivity issues
-- Need to access a device behind NAT/firewall
+- Setting up SSH access between devices on different networks
+- A device needs internet access through another device (exit node)
+- Connecting to a server behind NAT/firewall
+- Need all your devices (Windows/macOS/Linux) to SSH to each other
 
-## Installation
+## Auto-Setup Flow
 
-### Linux (Ubuntu/Debian)
+### Install Tailscale (auto-detect platform)
+
 ```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --authkey=tskey-auth-xxxxx  # Or interactive login
-```
+# Linux (auto-detect distro)
+if command -v apt &>/dev/null; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+elif command -v yum &>/dev/null; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+fi
 
-### Linux (CentOS/RHEL)
-```bash
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo systemctl enable --now tailscaled
-sudo tailscale up
-```
-
-### macOS
-```bash
+# macOS
 brew install tailscale
-# Or download from https://tailscale.com/download/mac
-```
 
-### Windows
-```powershell
-# Download from https://tailscale.com/download/windows
-# Or via winget:
+# Windows (PowerShell)
 winget install Tailscale.Tailscale
 ```
 
-## Core Commands
-
-### Device Management
+### Join Network + Enable SSH
 
 ```bash
-# Join the network
-sudo tailscale up
+# Linux/macOS: join + enable Tailscale SSH
+sudo tailscale up --ssh
 
-# Join with auth key (headless/automated)
-sudo tailscale up --authkey=tskey-auth-xxxxx
-
-# Check status
-tailscale status
-
-# See detailed info about this device
-tailscale ip       # Show Tailscale IPs
-tailscale netcheck # Network connectivity check
-
-# Disconnect (keep installed)
-sudo tailscale down
-
-# Logout completely
-sudo tailscale logout
+# Windows: join (no --ssh support, use OpenSSH instead)
+# GUI: sign in via system tray icon
+# Then enable OpenSSH Server:
+# Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+# Start-Service sshd
+# Set-Service -Name sshd -StartupType 'Automatic'
 ```
 
-### Exit Node Configuration
+### Auto-Fix: Windows SSH Access
 
-An exit node routes ALL internet traffic from other devices through itself. Useful when a device has restricted internet but can reach another device via Tailscale.
+Windows doesn't support `--ssh` flag. Claude should automatically:
 
-#### Advertise as Exit Node (Server Side)
+```powershell
+# 1. Check if OpenSSH Server is installed
+Get-WindowsCapability -Online | Where-Object Name -like 'OpenSSH.Server*'
+
+# 2. Install if missing
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+
+# 3. Start and enable auto-start
+Start-Service sshd
+Set-Service -Name sshd -StartupType 'Automatic'
+
+# 4. Verify
+ssh localhost "echo Windows SSH OK"
+```
+
+## Cross-Platform SSH Matrix
+
+After setup, all devices can SSH to each other:
 
 ```bash
-# Linux: Enable IP forwarding first
+# To Linux (Tailscale SSH or OpenSSH)
+ssh user@100.x.x.x
+ssh user@tailscale-hostname
+
+# To macOS (Tailscale SSH)
+ssh user@100.x.x.x
+
+# To Windows (OpenSSH Server)
+ssh windowsuser@100.x.x.x
+```
+
+## Exit Node Configuration
+
+### Auto-Setup: Make Server an Exit Node
+
+```bash
+# 1. Enable IP forwarding (required)
 echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
 echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
 sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
 
-# Advertise this device as an exit node
+# 2. Advertise as exit node
 sudo tailscale up --advertise-exit-node
 
-# Also advertise as subnet router (optional, for LAN access)
-sudo tailscale up --advertise-exit-node --advertise-routes=192.168.1.0/24
+# 3. Remind user: approve in admin console
+echo "IMPORTANT: Approve this exit node at https://login.tailscale.com/admin/machines"
 ```
 
-Then approve the exit node in the [Tailscale admin console](https://login.tailscale.com/admin/machines).
-
-#### Use an Exit Node (Client Side)
+### Auto-Setup: Use Exit Node (with safety)
 
 ```bash
-# List available exit nodes
+# ALWAYS use --exit-node-allow-lan-access to prevent SSH disconnect!
+sudo tailscale set --exit-node=EXIT_NODE_IP --exit-node-allow-lan-access=true
+
+# Verify internet works
+curl -s --connect-timeout 10 https://example.com -o /dev/null -w '%{http_code}'
+# If 000 (failed), the exit node isn't working → revert:
+# sudo tailscale set --exit-node=
+```
+
+### Auto-Fix: Exit Node Breaks SSH Connection
+
+If setting an exit node caused SSH to drop:
+
+```bash
+# The fix is to ALWAYS include --exit-node-allow-lan-access=true
+# If already disconnected, need physical/console access to run:
+sudo tailscale set --exit-node=
+# Then reconnect and retry with the flag
+```
+
+### Auto-Fix: Exit Node Not Working
+
+```bash
+# 1. Check if approved in admin console
 tailscale status | grep "exit node"
 
-# Use a specific exit node
-sudo tailscale set --exit-node=<IP_OR_HOSTNAME>
+# 2. Check IP forwarding on exit node server
+sysctl net.ipv4.ip_forward
+# If 0: enable it
 
-# Keep LAN access while using exit node (IMPORTANT for SSH!)
-sudo tailscale set --exit-node=<IP> --exit-node-allow-lan-access=true
-
-# Stop using exit node
-sudo tailscale set --exit-node=
+# 3. Check if exit node can reach internet
+ssh exit-node-server "curl -s https://example.com -o /dev/null -w '%{http_code}'"
 ```
 
-**WARNING**: Setting an exit node may break existing SSH connections if `--exit-node-allow-lan-access` is not enabled.
-
-### SSH via Tailscale
-
-#### Linux/macOS: Native Tailscale SSH
+## Auto-Fix: Slow Connection (Relay)
 
 ```bash
-# Enable Tailscale SSH on the server (replaces OpenSSH for Tailscale connections)
-sudo tailscale up --ssh
+# Check connection type
+tailscale status
+# If shows "relay hkg" instead of "direct":
 
-# Connect from another device
-ssh user@<tailscale-hostname>
-# Example: ssh zqs@l40
+# 1. Run network check
+tailscale netcheck
+# Look for: "UDP" blocked or filtered
+
+# 2. Try restarting
+sudo systemctl restart tailscaled
+sleep 5
+tailscale status
+
+# 3. If still relay: need to open UDP port 41641 on firewall
+# This requires network admin access
 ```
 
-#### Windows: Cannot use Tailscale SSH directly
-
-Windows does not support Tailscale SSH as a server. Workarounds:
-
-**Option 1: Use OpenSSH (Recommended)**
-```powershell
-# Windows has built-in OpenSSH server
-# Enable via Settings > Apps > Optional Features > OpenSSH Server
-# Or via PowerShell (Admin):
-Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
-Start-Service sshd
-Set-Service -Name sshd -StartupType 'Automatic'
-
-# Now other Tailscale devices can SSH to this Windows machine
-# using the Tailscale IP:
-ssh user@100.x.x.x
-```
-
-**Option 2: Use Tailscale IP with regular SSH**
-```bash
-# From any device, SSH to Windows using its Tailscale IP
-ssh windowsuser@100.108.97.45
-```
-
-**Option 3: Use Windows as a jumpbox**
-```bash
-# SSH through Windows to reach another device
-ssh -J windowsuser@100.108.97.45 linuxuser@100.100.203.100
-```
-
-## Network Topology Examples
-
-### Scenario 1: GPU Server Behind Firewall
-
-```
-┌─────────────┐    Tailscale    ┌─────────────┐
-│ Your Laptop │◄──────────────►│  GPU Server  │
-│ (Windows)   │   100.x.x.x    │  (Linux)     │
-│             │                 │  No internet │
-└─────────────┘                 └─────────────┘
-       │
-       │ Exit Node
-       ▼
-┌─────────────┐
-│  VPS (HK)   │──── Internet ──── huggingface.co
-│ Exit Node   │
-└─────────────┘
-```
+## Auto-Fix: Device Shows Offline
 
 ```bash
-# On GPU server: use VPS as exit node to access internet
-sudo tailscale set --exit-node=100.127.35.1 --exit-node-allow-lan-access=true
+# Check Tailscale daemon
+sudo systemctl status tailscaled
 
-# Download model via the exit node's internet
-wget https://huggingface.co/...
+# If not running:
+sudo systemctl start tailscaled
+sudo systemctl enable tailscaled
+
+# If running but offline:
+sudo tailscale up  # Re-authenticate
 ```
 
-### Scenario 2: Multi-Machine Mesh
+## Useful Commands
 
+```bash
+tailscale status              # All devices and connection status
+tailscale ping DEVICE_IP      # Test connectivity to a device
+tailscale netcheck            # Network diagnostics
+tailscale ip -4               # Show this device's Tailscale IPv4
+tailscale file send FILE HOST: # Send file to another device
+tailscale set --exit-node=    # Stop using exit node
 ```
-┌──────────┐     ┌──────────┐     ┌──────────┐
-│  Laptop  │◄───►│  Desktop │◄───►│ GPU Srv  │
-│ Win/Mac  │     │ Windows  │     │  Linux   │
-│ .97.45   │     │ .108.97  │     │ .203.100 │
-└──────────┘     └──────────┘     └──────────┘
-      │               │                │
-      └───────────────┼────────────────┘
-                      │
-               ┌──────────┐
-               │  VPS x14 │  (Exit Nodes)
-               │ HK/JP/US │
-               └──────────┘
-```
-
-## Troubleshooting
-
-| Issue | Command | Solution |
-|-------|---------|----------|
-| Can't reach device | `tailscale ping <ip>` | Check if device is online in admin console |
-| Slow connection (relay) | `tailscale status` (shows "relay") | `tailscale netcheck` to diagnose; may need to open UDP port 41641 |
-| Exit node not working | `curl ifconfig.me` | Approve exit node in admin console; check IP forwarding |
-| SSH timeout via Tailscale | `tailscale ping <ip>` | Use `--exit-node-allow-lan-access=true` |
-| Device shows offline | `sudo systemctl status tailscaled` | Restart: `sudo systemctl restart tailscaled` |
-| "relay hkg" instead of direct | Check firewall | Open UDP 41641 on both sides for direct connection |
-
-## Security Best Practices
-
-- Use ACLs in Tailscale admin console to restrict which devices can access what
-- Enable MFA on your Tailscale account
-- Use `--exit-node-allow-lan-access=true` carefully (allows LAN access from exit node)
-- Regularly review connected devices in admin console
-- Use auth keys with expiration for automated setups

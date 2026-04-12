@@ -1,6 +1,6 @@
 # Claude Code Skills Collection
 
-[English](#english) | [中文](#中文)
+**English** | [中文](README_CN.md)
 
 A growing collection of custom skills for [Claude Code](https://claude.ai/code), Anthropic's official CLI for Claude. These skills extend Claude's capabilities to operate remote GUI applications, manage SSH connections, and configure Tailscale mesh networks.
 
@@ -12,6 +12,7 @@ A growing collection of custom skills for [Claude Code](https://claude.ai/code),
 
 | Skill | Description | Use Case |
 |-------|-------------|----------|
+| [lark-im](skills/lark-im/) | Bridge Lark/Feishu to Claude Code with model switching and privacy isolation | Chat with Claude Code via Feishu, switch models at runtime, 4-layer access control |
 | [remote-gui](skills/remote-gui/) | Operate GUI applications on headless Linux servers via SSH | Launch desktop apps, click buttons, fill forms on servers without monitors |
 | [ssh-persist](skills/ssh-persist/) | Automated SSH key deployment and persistent connection management | Eliminate password prompts, prevent disconnects, speed up SSH |
 | [tailscale-mesh](skills/tailscale-mesh/) | Tailscale mesh networking: cross-platform SSH, exit nodes, device management | SSH between Windows/macOS/Linux via Tailscale, route internet through exit nodes |
@@ -438,130 +439,14 @@ ssh windowsuser@<windows-tailscale-ip>
 
 ---
 
-## 中文
-
-### 概述
-
-这是一个持续增长的 [Claude Code](https://claude.ai/code) 自定义技能集合。每个技能都是独立模块，可以单独安装使用。这些技能扩展了 Claude 的能力：操作远程 GUI 应用、管理 SSH 连接、配置 Tailscale 组网。
-
-### 可用技能
-
-| 技能 | 描述 | 使用场景 |
-|------|------|---------|
-| [remote-gui](skills/remote-gui/) | 通过 SSH 在无显示器的 Linux 服务器上操作 GUI 应用 | 在 GPU 服务器上启动桌面程序、点击按钮、填写表单 |
-| [ssh-persist](skills/ssh-persist/) | 自动部署 SSH 密钥和持久化连接管理 | 免密码登录、防断连、加速 SSH 连接 |
-| [tailscale-mesh](skills/tailscale-mesh/) | Tailscale 组网：跨平台 SSH、出口节点、设备管理 | Windows/macOS/Linux 互相 SSH、通过出口节点访问外网 |
-
-### 快速开始（5 分钟）
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/18798aa12/claude-code-skills.git
-cd claude-code-skills
-
-# 2. 安装需要的技能
-cp -r skills/remote-gui ~/.claude/skills/
-cp -r skills/ssh-persist ~/.claude/skills/
-cp -r skills/tailscale-mesh ~/.claude/skills/
-
-# 3. 在 Claude Code 中使用
-# 直接描述你的需求，Claude 会自动选择合适的技能：
-#   "帮我配置到服务器 10.0.0.1 的免密 SSH"
-#   "在 GPU 服务器上启动 VPN 客户端并登录"
-#   "把 VPS 配成出口节点让 GPU 服务器能上网"
-```
-
-### 完整配置指南
-
-#### 前提条件
-
-- 已安装 [Claude Code](https://claude.ai/code) CLI
-- 有至少一台可 SSH 访问的远程 Linux 服务器
-- （可选）[Tailscale](https://tailscale.com/) 账号用于组网
-
-#### 第一步：安装技能
-
-```bash
-# 克隆仓库
-git clone https://github.com/18798aa12/claude-code-skills.git
-
-# 方式 A：安装全部技能
-cp -r claude-code-skills/skills/* ~/.claude/skills/
-
-# 方式 B：安装指定技能
-cp -r claude-code-skills/skills/remote-gui ~/.claude/skills/
-
-# 验证安装
-ls ~/.claude/skills/
-```
-
-#### 第二步：确保 SSH 可用
-
-```bash
-# 测试能否连接到服务器
-ssh user@your-server "echo OK"
-
-# 如果使用 Tailscale
-ssh user@100.x.x.x "echo OK"
-```
-
-#### 第三步：开始使用
-
-启动 Claude Code，描述你的任务即可：
-
-```bash
-claude
-# > "帮我在 GPU 服务器上登录 VPN 客户端"
-# > "配置免密 SSH 到 100.100.203.100"
-# > "设置 Tailscale 出口节点"
-```
-
-### 各技能详细说明
-
-详见各技能目录下的 SKILL.md：
-- [remote-gui/SKILL.md](skills/remote-gui/SKILL.md) — 远程 GUI 操作的完整命令参考
-- [ssh-persist/SKILL.md](skills/ssh-persist/SKILL.md) — SSH 配置参数详解
-- [tailscale-mesh/SKILL.md](skills/tailscale-mesh/SKILL.md) — Tailscale 各平台配置和 SSH 互通方案
-
-### Tailscale 跨平台 SSH 互通方案
-
-| 从 \ 到 | Linux | macOS | Windows |
-|---------|-------|-------|---------|
-| **Linux** | `ssh user@100.x.x.x`（Tailscale SSH 或 OpenSSH） | `ssh user@100.x.x.x`（Tailscale SSH） | `ssh user@100.x.x.x`（OpenSSH Server） |
-| **macOS** | `ssh user@100.x.x.x` | `ssh user@100.x.x.x` | `ssh user@100.x.x.x`（OpenSSH Server） |
-| **Windows** | `ssh user@100.x.x.x` | `ssh user@100.x.x.x` | `ssh user@100.x.x.x`（OpenSSH Server） |
-
-**注意**：Windows 不支持 Tailscale SSH 作为服务端，必须启用 OpenSSH Server：
-
-```powershell
-# 管理员 PowerShell
-Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
-Start-Service sshd
-Set-Service -Name sshd -StartupType 'Automatic'
-```
-
-### 常见问题
-
-| 问题 | 解决方案 |
-|------|---------|
-| 截图全黑 | 启动 fluxbox 窗口管理器 |
-| SSH 密钥被拒绝 | 检查 authorized_keys 权限和 immutable 属性 |
-| Tailscale 走中继（慢） | 开放 UDP 41641 端口实现直连 |
-| Windows 不能被 SSH | 安装 OpenSSH Server |
-| 出口节点设置后断连 | 加 `--exit-node-allow-lan-access=true` |
-
----
-
 ## Contributing
 
-欢迎提交 PR 添加新技能或改进现有技能。
+PRs welcome! Each skill is a directory under `skills/` containing a `SKILL.md` file.
 
-每个技能是 `skills/` 下的一个目录，包含：
 ```
 skills/my-skill/
-├── SKILL.md          # 技能定义（必须，Claude Code 读取）
-├── README.md         # 详细文档（可选）
-└── scripts/          # 辅助脚本（可选）
+├── SKILL.md          # Skill definition (required, read by Claude Code)
+└── scripts/          # Helper scripts (optional)
 ```
 
 ## Contributors
