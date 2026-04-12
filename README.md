@@ -2,7 +2,7 @@
 
 **English** | [中文](README_CN.md)
 
-A growing collection of custom skills for [Claude Code](https://claude.ai/code), Anthropic's official CLI for Claude. These skills extend Claude's capabilities to operate remote GUI applications, manage SSH connections, and configure Tailscale mesh networks.
+A growing collection of custom skills for [Claude Code](https://claude.ai/code), Anthropic's official CLI for Claude. These skills extend Claude's capabilities to bridge IM platforms (Lark/Feishu), operate remote GUI applications, manage SSH connections, and configure Tailscale mesh networks.
 
 ---
 
@@ -12,7 +12,7 @@ A growing collection of custom skills for [Claude Code](https://claude.ai/code),
 
 | Skill | Description | Use Case |
 |-------|-------------|----------|
-| [lark-im](skills/lark-im/) | Bridge Lark/Feishu to Claude Code with model switching and privacy isolation | Chat with Claude Code via Feishu, switch models at runtime, 4-layer access control |
+| [lark-im](skills/lark-im/) | Bridge multi-IM to multi-AI (Claude/Codex/Qwen/GLM) with model switching and 4-layer privacy | Chat with AI via Feishu/Telegram/QQ, switch models at runtime, fine-grained access control |
 | [remote-gui](skills/remote-gui/) | Operate GUI applications on headless Linux servers via SSH | Launch desktop apps, click buttons, fill forms on servers without monitors |
 | [ssh-persist](skills/ssh-persist/) | Automated SSH key deployment and persistent connection management | Eliminate password prompts, prevent disconnects, speed up SSH |
 | [tailscale-mesh](skills/tailscale-mesh/) | Tailscale mesh networking: cross-platform SSH, exit nodes, device management | SSH between Windows/macOS/Linux via Tailscale, route internet through exit nodes |
@@ -25,12 +25,14 @@ git clone https://github.com/18798aa12/claude-code-skills.git
 cd claude-code-skills
 
 # 2. Install the skills you need
+cp -r skills/lark-im ~/.claude/skills/
 cp -r skills/remote-gui ~/.claude/skills/
 cp -r skills/ssh-persist ~/.claude/skills/
 cp -r skills/tailscale-mesh ~/.claude/skills/
 
 # 3. Use in Claude Code
 # Just describe what you want - Claude will automatically use the relevant skill:
+#   "Set up a Feishu bot bridged to Claude Code"
 #   "Set up SSH key auth to my server at 10.0.0.1"
 #   "Launch the VPN client on my GPU server and log in"
 #   "Configure Tailscale exit node on my VPS"
@@ -41,7 +43,8 @@ cp -r skills/tailscale-mesh ~/.claude/skills/
 #### Prerequisites
 
 - [Claude Code](https://claude.ai/code) CLI installed
-- SSH access to at least one remote Linux server
+- (For lark-im) Node.js >= 20, a [Feishu](https://www.feishu.cn/) app with Bot capability, Claude OAuth token
+- (For remote-gui / ssh-persist) SSH access to at least one remote Linux server
 - (Optional) [Tailscale](https://tailscale.com/) account for mesh networking
 
 #### Step 1: Install Skills
@@ -54,13 +57,14 @@ git clone https://github.com/18798aa12/claude-code-skills.git
 cp -r claude-code-skills/skills/* ~/.claude/skills/
 
 # Option B: Install specific skills
+cp -r claude-code-skills/skills/lark-im ~/.claude/skills/
 cp -r claude-code-skills/skills/remote-gui ~/.claude/skills/
 cp -r claude-code-skills/skills/ssh-persist ~/.claude/skills/
 cp -r claude-code-skills/skills/tailscale-mesh ~/.claude/skills/
 
 # Verify installation
 ls ~/.claude/skills/
-# Should show: remote-gui/  ssh-persist/  tailscale-mesh/
+# Should show: lark-im/  remote-gui/  ssh-persist/  tailscale-mesh/
 ```
 
 #### Step 2: Configure SSH Access
@@ -84,7 +88,7 @@ Start Claude Code and describe your task. Claude will automatically detect which
 claude
 
 # Then tell Claude what you want:
-# > "Set up passwordless SSH to my GPU server at 100.100.203.100 with user zqs"
+# > "Set up passwordless SSH to my GPU server at 10.0.0.1 with user myuser"
 # > "Open the VPN client GUI on my server and log in with email test@example.com"
 # > "Make my VPS an exit node so my GPU server can access the internet"
 ```
@@ -92,6 +96,98 @@ claude
 ---
 
 ### Skill Details
+
+#### lark-im — Multi-IM ↔ Multi-AI Bot Bridge
+
+**What it does**: Bridges IM platforms ([Feishu](https://www.feishu.cn/)/Telegram/QQ/DingTalk/WeCom/WeChat) to AI coding assistants (Claude/Codex/CodeBuddy/Qwen/GLM/DeepSeek), with full tool access and 4-layer privacy protection.
+
+**How it works**:
+
+```
+IM Users (Feishu / Telegram / QQ / DingTalk / WeCom / WeChat)
+    │
+    ↓  WebSocket / Bot API
+    │
+┌───────────────────────────────┐
+│  @wu529778790/open-im         │  Multi-IM ↔ Multi-AI bridge
+│  + patch-package patch        │  Injects canUseTool callback
+└───────────┬───────────────────┘
+            │
+    ┌───────┼────────┐
+    ↓       ↓        ↓
+┌────────┐┌────────┐┌──────────┐
+│ Claude ││ Codex  ││CodeBuddy │  AI Adapters
+│  SDK   ││  CLI   ││   CLI    │  + custom endpoints
+└───┬────┘└───┬────┘└────┬─────┘  (Qwen/GLM/DeepSeek)
+    ↓         ↓          ↓
+ MCP Servers + Tools (filtered by canUseTool)
+```
+
+**Quick setup**:
+
+```bash
+# 1. Create project and install dependencies
+mkdir my-im-bot && cd my-im-bot
+npm init -y
+npm install @wu529778790/open-im @anthropic-ai/claude-agent-sdk ws
+npm install -D patch-package
+
+# 2. Store credentials OUTSIDE the project (for security)
+mkdir -p ~/.open-im
+# Create ~/.open-im/config.json with appId, appSecret, and aiCommand
+# Create ~/.open-im/token with your OAuth token
+
+# 3. Apply privacy patch (adds canUseTool callback)
+# See SKILL.md for the full patch content
+npx patch-package @wu529778790/open-im
+```
+
+**3 AI backends + custom endpoints**:
+
+| Backend | Provider | Models |
+|---------|----------|--------|
+| Claude (native) | Anthropic | Opus 4.6/4.5, Sonnet 4.6, Haiku 4.5 |
+| Claude (custom) | Any OpenAI-compatible | **Qwen, GLM, DeepSeek, Kimi**, etc. |
+| Codex | OpenAI | GPT-4o, o3, etc. |
+| CodeBuddy | Tencent | Tencent AI models |
+
+**Model switching** — four approaches:
+
+| Approach | How | When to use |
+|----------|-----|-------------|
+| Switch AI backend | `"aiCommand": "codex"` in config.json | Change entire provider |
+| Change patch default | Edit `model: 'claude-sonnet-4-6'` in patch | Permanent Claude model switch |
+| Environment variable | `ANTHROPIC_MODEL=claude-sonnet-4-6` | Runtime switch |
+| Custom endpoint | Set `ANTHROPIC_BASE_URL` + `ANTHROPIC_MODEL` | Use Qwen/GLM/DeepSeek |
+| Per-message prefix | User types `/fast ...` or `/think ...` | Per-message routing |
+
+**4-layer privacy protection**:
+
+| Layer | Mechanism | Protects against |
+|-------|-----------|-----------------|
+| 1. Token isolation | Token stored outside project dir (different drive) | Bot reading its own credentials |
+| 2. canUseTool callback | Intercepts every tool call, checks paths and commands | Unauthorized file access, env var leaks, shell escape |
+| 3. settings.json deny rules | Declarative allow/deny path patterns | Defense in depth if canUseTool has bugs |
+| 4. Group @mention filter | Only responds to @bot in group chats | Accidental triggers, spam |
+
+**Operations**:
+
+```powershell
+# Start (Windows)
+.\start.ps1
+
+# Stop
+.\stop.ps1       # or: npx @wu529778790/open-im stop
+
+# Check status
+.\status.ps1     # checks WebSocket ports 39281/39282
+```
+
+**15 known issues documented** in SKILL.md with root causes and fixes, including: SDK `allowedTools` bypassing canUseTool, `permissionMode: 'default'` failing in daemon mode, Windows path backslash issues, OAuth token expiration, and more.
+
+Full details and troubleshooting: [skills/lark-im/SKILL.md](skills/lark-im/SKILL.md)
+
+---
 
 #### remote-gui — Remote GUI Operation
 
@@ -383,6 +479,42 @@ tailscale file send myfile.txt hostname:
 ---
 
 ### Troubleshooting
+
+<details>
+<summary><b>lark-im: Bot doesn't respond to Feishu messages</b></summary>
+
+1. Check if the service is running: `.\status.ps1` (Windows) or `pgrep -f open-im` (Linux)
+2. Verify Feishu app events are subscribed (`im.message.receive_v1`)
+3. If new group chat, republish the Feishu app version
+4. Check OAuth token hasn't expired (1-year TTL)
+</details>
+
+<details>
+<summary><b>lark-im: Bot writes to files outside allowed directory</b></summary>
+
+This means `canUseTool` is being bypassed. Check:
+1. `allowedTools` must NOT be set in sessionOptions (it pre-approves and skips canUseTool)
+2. canUseTool must normalize paths: `.replace(/\\/g, '/').toLowerCase()`
+3. settings.json must have explicit deny rules for broad paths + specific allow for writable dir
+</details>
+
+<details>
+<summary><b>lark-im: "suggested permissions not found" SDK error</b></summary>
+
+The canUseTool callback must return `updatedPermissions` even for allow responses:
+```javascript
+return { behavior: 'allow', updatedPermissions: options.suggestions || [] };
+```
+</details>
+
+<details>
+<summary><b>lark-im: Bash commands silently fail on Windows</b></summary>
+
+Set `CLAUDE_CODE_GIT_BASH_PATH` in your startup script:
+```powershell
+$env:CLAUDE_CODE_GIT_BASH_PATH = "C:\Program Files\Git\bin\bash.exe"
+```
+</details>
 
 <details>
 <summary><b>remote-gui: Screenshot is all black</b></summary>
