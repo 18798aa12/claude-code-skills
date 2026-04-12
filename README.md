@@ -2,15 +2,11 @@
 
 [English](#english) | [中文](#中文)
 
-A growing collection of custom skills for [Claude Code](https://claude.ai/code), Anthropic's official CLI for Claude.
+A growing collection of custom skills for [Claude Code](https://claude.ai/code), Anthropic's official CLI for Claude. These skills extend Claude's capabilities to operate remote GUI applications, manage SSH connections, and configure Tailscale mesh networks.
 
 ---
 
 ## English
-
-### Overview
-
-This repository contains reusable skills that extend Claude Code's capabilities. Each skill is a self-contained module that can be installed independently.
 
 ### Available Skills
 
@@ -20,128 +16,425 @@ This repository contains reusable skills that extend Claude Code's capabilities.
 | [ssh-persist](skills/ssh-persist/) | Automated SSH key deployment and persistent connection management | Eliminate password prompts, prevent disconnects, speed up SSH |
 | [tailscale-mesh](skills/tailscale-mesh/) | Tailscale mesh networking: cross-platform SSH, exit nodes, device management | SSH between Windows/macOS/Linux via Tailscale, route internet through exit nodes |
 
-### Quick Install
+### Quick Start (5 minutes)
+
+```bash
+# 1. Clone
+git clone https://github.com/18798aa12/claude-code-skills.git
+cd claude-code-skills
+
+# 2. Install the skills you need
+cp -r skills/remote-gui ~/.claude/skills/
+cp -r skills/ssh-persist ~/.claude/skills/
+cp -r skills/tailscale-mesh ~/.claude/skills/
+
+# 3. Use in Claude Code
+# Just describe what you want - Claude will automatically use the relevant skill:
+#   "Set up SSH key auth to my server at 10.0.0.1"
+#   "Launch the VPN client on my GPU server and log in"
+#   "Configure Tailscale exit node on my VPS"
+```
+
+### Full Setup Guide
+
+#### Prerequisites
+
+- [Claude Code](https://claude.ai/code) CLI installed
+- SSH access to at least one remote Linux server
+- (Optional) [Tailscale](https://tailscale.com/) account for mesh networking
+
+#### Step 1: Install Skills
 
 ```bash
 # Clone the repository
 git clone https://github.com/18798aa12/claude-code-skills.git
 
-# Install a single skill
-cp -r claude-code-skills/skills/remote-gui ~/.claude/skills/
-
-# Or install all skills at once
+# Option A: Install all skills
 cp -r claude-code-skills/skills/* ~/.claude/skills/
+
+# Option B: Install specific skills
+cp -r claude-code-skills/skills/remote-gui ~/.claude/skills/
+cp -r claude-code-skills/skills/ssh-persist ~/.claude/skills/
+cp -r claude-code-skills/skills/tailscale-mesh ~/.claude/skills/
+
+# Verify installation
+ls ~/.claude/skills/
+# Should show: remote-gui/  ssh-persist/  tailscale-mesh/
 ```
 
-### Skill: remote-gui
+#### Step 2: Configure SSH Access
 
-**Problem**: Claude Code cannot interact with GUI applications on remote servers. Headless servers have no display, and tools like VNC require manual browser access that Claude cannot control.
+Before using `remote-gui` or `ssh-persist`, ensure you can SSH to your server:
 
-**Solution**: A screenshot-and-click automation loop using standard Linux tools:
+```bash
+# Test basic SSH connectivity
+ssh user@your-server-ip "echo connected"
+
+# If using Tailscale
+ssh user@100.x.x.x "echo connected"
+```
+
+#### Step 3: Use the Skills
+
+Start Claude Code and describe your task. Claude will automatically detect which skill to use:
+
+```bash
+# Start Claude Code
+claude
+
+# Then tell Claude what you want:
+# > "Set up passwordless SSH to my GPU server at 100.100.203.100 with user zqs"
+# > "Open the VPN client GUI on my server and log in with email test@example.com"
+# > "Make my VPS an exit node so my GPU server can access the internet"
+```
+
+---
+
+### Skill Details
+
+#### remote-gui — Remote GUI Operation
+
+**What it does**: Lets Claude see and interact with desktop applications running on headless Linux servers (servers without a monitor).
+
+**How it works**:
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                Remote Server                     │
+│              Remote Server (Headless)             │
 │                                                  │
-│  Xvfb (Virtual Display :99)                      │
-│  ├── fluxbox (Window Manager)                    │
-│  └── Your GUI App (e.g., VPN client, IDE)        │
+│  ┌──────────────────────────────────────┐        │
+│  │  Xvfb — Virtual Display (:99)       │        │
+│  │  ┌──────────────────────────────┐   │        │
+│  │  │  fluxbox — Window Manager    │   │        │
+│  │  │  ┌──────────────────────┐   │   │        │
+│  │  │  │  Your GUI App        │   │   │        │
+│  │  │  │  (VPN, IDE, etc.)    │   │   │        │
+│  │  │  └──────────────────────┘   │   │        │
+│  │  └──────────────────────────────┘   │        │
+│  └──────────────────────────────────────┘        │
 │                                                  │
-│  scrot → screenshot.png  ← xdotool click/type    │
-└───────────┬──────────────────────┬───────────────┘
-            │ SCP download         │ SSH command
-┌───────────▼──────────────────────▼───────────────┐
-│              Claude Code (Local)                  │
+│  scrot → screenshot.png                          │
+│  xdotool → click(x,y) / type("text")            │
+└──────────┬──────────────────────┬────────────────┘
+           │ SCP (download)       │ SSH (commands)
+┌──────────▼──────────────────────▼────────────────┐
+│              Your Computer (Claude Code)          │
 │                                                  │
-│  Read screenshot → Understand UI → Decide action  │
-│  → Send xdotool command → Take new screenshot     │
-│  → Verify result → Repeat                        │
+│  1. Read screenshot → understand UI layout        │
+│  2. Decide action → "click login button at 640,500│
+│  3. Send xdotool command via SSH                  │
+│  4. Take new screenshot → verify success          │
+│  5. Repeat until done                            │
 └──────────────────────────────────────────────────┘
 ```
 
-**How it works step by step**:
+**First-time setup** (auto-installed by Claude):
 
-1. **Setup** (one-time): Install `Xvfb`, `fluxbox`, `scrot`, `xdotool` on the remote server
-2. **Launch**: Start virtual display and window manager, then launch the target GUI application
-3. **Screenshot**: Capture the screen with `scrot`, transfer to local via SCP
-4. **Read**: Claude reads the screenshot image to understand the current UI state
-5. **Act**: Claude sends mouse movements, clicks, and keyboard input via `xdotool`
-6. **Verify**: Take another screenshot to confirm the action succeeded
-7. **Repeat**: Continue the loop until the task is complete
-
-**Requirements**:
-- Remote server: Ubuntu/Debian Linux with `apt` package manager
-- SSH access to the server (password or key-based)
-- Packages (auto-installed): `xvfb`, `fluxbox`, `scrot`, `xdotool`, `imagemagick`
-
-**Example Usage**:
-
-```
-User: Log into the VPN client on my GPU server
-
-Claude: Setting up virtual display...
-        [installs xvfb, fluxbox, scrot, xdotool]
-        [starts Xvfb :99, launches fluxbox]
-        [launches VPN client]
-        [takes screenshot → sees login form]
-        [clicks email field → types email]
-        [clicks password field → types password]
-        [clicks login button]
-        [takes screenshot → login successful!]
+```bash
+# On the remote server (requires sudo)
+sudo apt install -y xvfb fluxbox scrot xdotool imagemagick
 ```
 
-### Skill: ssh-persist
+**Manual usage** (if you want to run the commands yourself):
 
-**Problem**: SSH connections to remote servers are slow (password authentication every time), frequently disconnect (no keepalive), and may trigger fail2ban after repeated reconnections.
+```bash
+# 1. Start virtual display
+Xvfb :99 -screen 0 1280x720x24 &>/dev/null &
+export DISPLAY=:99
+fluxbox &>/dev/null &
 
-**Solution**: Automated SSH key deployment and optimized connection configuration.
+# 2. Launch your GUI app
+/path/to/your/app &
+sleep 3
 
-**What it does**:
+# 3. Take screenshot
+scrot /tmp/screen.png
 
-1. **Key Setup**: Generates or reuses existing Ed25519 SSH key
-2. **Key Deployment**: Copies public key to remote server's `authorized_keys` (handles permission issues, immutable file attributes, owner mismatches)
-3. **SSH Config**: Creates/updates `~/.ssh/config` with:
-   - Host alias (e.g., `ssh myserver` instead of `ssh user@10.0.0.1`)
-   - `IdentityFile` for passwordless auth
-   - `ServerAliveInterval` / `ServerAliveCountMax` for keepalive
-   - `TCPKeepAlive` to prevent idle disconnects
-4. **Verification**: Tests the connection and reports latency
+# 4. Transfer to local and view
+scp server:/tmp/screen.png ./screen.png
 
-**Before vs After**:
+# 5. Interact
+xdotool mousemove 640 330    # Move mouse
+xdotool click 1               # Left click
+xdotool type 'hello@email.com'  # Type text
+xdotool key Return             # Press Enter
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Authentication | Password (slow, triggers fail2ban) | SSH key (instant, no fail2ban) |
-| Command | `ssh user@100.100.203.100` | `ssh l40` |
-| Keepalive | None (disconnects after idle) | Every 15s heartbeat |
-| Reconnect on failure | Manual | Auto-retry |
-
-**Example Usage**:
-
-```
-User: Set up persistent SSH to my L40 GPU server
-
-Claude: Checking existing SSH keys... found id_ed25519
-        Deploying key to 100.100.203.100...
-        [handles immutable flag on authorized_keys]
-        Configuring ~/.ssh/config with alias 'l40'...
-        Testing connection... 3.6s, no password required.
-        Done! Use `ssh l40` from now on.
+# 6. Screenshot again to verify
+scrot /tmp/screen2.png
 ```
 
-### Creating New Skills
+**Supported interactions**:
 
-Each skill is a directory under `skills/` containing:
+| Action | Command | Example |
+|--------|---------|---------|
+| Move mouse | `xdotool mousemove X Y` | `xdotool mousemove 640 330` |
+| Left click | `xdotool click 1` | Click at current position |
+| Right click | `xdotool click 3` | Open context menu |
+| Double click | `xdotool click --repeat 2 1` | Open file |
+| Type text | `xdotool type 'text'` | `xdotool type 'user@email.com'` |
+| Type slowly | `xdotool type --delay 50 'text'` | For apps that miss fast typing |
+| Press key | `xdotool key <key>` | `xdotool key Return` |
+| Key combo | `xdotool key ctrl+a` | Select all |
+| Scroll up | `xdotool click 4` | Mouse wheel up |
+| Scroll down | `xdotool click 5` | Mouse wheel down |
+| Find window | `xdotool search --name "Title"` | Get window ID by title |
+| Focus window | `xdotool windowactivate <id>` | Bring window to front |
+
+**Limitations**:
+- ~3-5 seconds per action cycle (screenshot transfer + processing)
+- Requires sudo for initial package installation
+- No audio support
+- Very small text may be hard to read (increase screen resolution)
+
+---
+
+#### ssh-persist — SSH Persistent Connection
+
+**What it does**: Sets up passwordless SSH key authentication and optimizes connection settings for reliability.
+
+**The problem**: Every SSH command requires password → slow, triggers fail2ban after too many attempts, connections drop when idle.
+
+**The solution**: SSH key auth + keepalive configuration.
+
+**Step-by-step setup**:
+
+```bash
+# Step 1: Check if you have an SSH key
+ls ~/.ssh/id_ed25519.pub
+# If not found, generate one:
+ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ""
+
+# Step 2: Copy your key to the remote server
+ssh-copy-id -i ~/.ssh/id_ed25519.pub user@server
+
+# If that fails (permission issues), do it manually:
+cat ~/.ssh/id_ed25519.pub | ssh user@server "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys"
+
+# If authorized_keys has immutable flag:
+ssh user@server "sudo chattr -i ~/.ssh/authorized_keys"
+cat ~/.ssh/id_ed25519.pub | ssh user@server "cat >> ~/.ssh/authorized_keys"
+ssh user@server "sudo chattr +i ~/.ssh/authorized_keys"
+
+# Step 3: Configure ~/.ssh/config
+cat >> ~/.ssh/config << 'EOF'
+Host myserver
+    HostName 10.0.0.1
+    User myuser
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 15
+    ServerAliveCountMax 20
+    ConnectTimeout 30
+    TCPKeepAlive yes
+EOF
+
+# Step 4: Test
+ssh myserver "echo 'Passwordless SSH works!'"
+```
+
+**Configuration reference**:
 
 ```
-skills/my-skill/
-├── SKILL.md          # Skill definition (required)
-├── README.md         # Detailed documentation
-└── scripts/          # Helper scripts (optional)
-    └── setup.sh
+Host <alias>                    # Name you'll use: ssh <alias>
+    HostName <ip-or-domain>     # Server address
+    User <username>             # SSH username
+    Port <port>                 # SSH port (default: 22)
+    IdentityFile <key-path>     # Path to private key
+    ServerAliveInterval 15      # Send keepalive every N seconds
+    ServerAliveCountMax 20      # Max missed keepalives
+    ConnectTimeout 30           # Connection timeout (seconds)
+    TCPKeepAlive yes            # TCP-level keepalive
+
+    # Linux/macOS only (NOT Windows):
+    ControlMaster auto          # Reuse connections
+    ControlPath ~/.ssh/cm-%r@%h:%p
+    ControlPersist 4h           # Keep master alive for 4 hours
 ```
 
-The `SKILL.md` file follows the Claude Code skill format with YAML frontmatter.
+**Platform differences**:
+
+| Feature | Linux/macOS | Windows (Git Bash) |
+|---------|-------------|-------------------|
+| Key auth | Full support | Full support |
+| ControlMaster | Full support (~0.1s reuse) | Not supported (socket issues) |
+| Keepalive | Full support | Full support |
+| Connection speed | ~0.1s (reuse) / ~2s (new) | ~3-4s per command |
+
+---
+
+#### tailscale-mesh — Tailscale Mesh Networking
+
+**What it does**: Configures Tailscale mesh networks so all your devices (Windows, macOS, Linux) can communicate directly, regardless of firewalls or NATs.
+
+**Key concepts**:
+
+| Concept | What it means |
+|---------|--------------|
+| **Mesh Network** | All devices connect directly to each other (peer-to-peer) |
+| **Tailscale IP** | Each device gets a `100.x.x.x` address that works everywhere |
+| **Exit Node** | A device that routes other devices' internet traffic through itself |
+| **Tailscale SSH** | SSH without OpenSSH, using Tailscale's built-in SSH (Linux/macOS only) |
+
+**Full setup — making all devices SSH-accessible**:
+
+##### Linux Server (e.g., GPU server)
+
+```bash
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Join network + enable SSH + advertise as exit node
+sudo tailscale up --ssh --advertise-exit-node
+
+# Enable IP forwarding (required for exit node)
+echo 'net.ipv4.ip_forward = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+echo 'net.ipv6.conf.all.forwarding = 1' | sudo tee -a /etc/sysctl.d/99-tailscale.conf
+sudo sysctl -p /etc/sysctl.d/99-tailscale.conf
+
+# Check your Tailscale IP
+tailscale ip -4
+# Example output: 100.100.203.100
+```
+
+##### macOS
+
+```bash
+# Install
+brew install tailscale
+# Or download from: https://tailscale.com/download/mac
+
+# Join network + enable SSH
+sudo tailscale up --ssh
+
+# Check IP
+tailscale ip -4
+```
+
+##### Windows
+
+```powershell
+# Install via winget
+winget install Tailscale.Tailscale
+
+# Or download from: https://tailscale.com/download/windows
+# Launch Tailscale from system tray and sign in
+
+# IMPORTANT: Windows cannot run Tailscale SSH server
+# Instead, enable OpenSSH Server:
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd
+Set-Service -Name sshd -StartupType 'Automatic'
+
+# Set password authentication or deploy SSH keys
+# Now other devices can: ssh windowsuser@100.x.x.x
+```
+
+##### Verify cross-platform SSH
+
+```bash
+# From any device to Linux:
+ssh user@100.100.203.100     # Uses Tailscale SSH or OpenSSH
+
+# From any device to macOS:
+ssh user@100.x.x.x           # Uses Tailscale SSH
+
+# From any device to Windows:
+ssh windowsuser@100.108.97.45  # Uses OpenSSH Server
+
+# From Linux/Mac to any device (using Tailscale SSH):
+ssh user@hostname              # Uses Tailscale hostname
+```
+
+##### Using Exit Nodes
+
+When a device has no internet but can reach another device via Tailscale:
+
+```bash
+# On the device that needs internet:
+sudo tailscale set --exit-node=100.127.35.1 --exit-node-allow-lan-access=true
+
+# Verify internet works:
+curl -s https://example.com -o /dev/null -w '%{http_code}'
+# Should output: 200
+
+# Stop using exit node:
+sudo tailscale set --exit-node=
+
+# WARNING: Always use --exit-node-allow-lan-access=true
+# Otherwise your SSH connection may break!
+```
+
+##### Useful commands
+
+```bash
+# See all devices
+tailscale status
+
+# Ping a device (test connectivity)
+tailscale ping 100.100.203.100
+
+# Network diagnostics
+tailscale netcheck
+
+# See file transfer capability
+tailscale file send myfile.txt hostname:
+```
+
+---
+
+### Troubleshooting
+
+<details>
+<summary><b>remote-gui: Screenshot is all black</b></summary>
+
+The window manager isn't running. Start it:
+```bash
+export DISPLAY=:99
+fluxbox &>/dev/null &
+sleep 2
+scrot /tmp/test.png  # Should now show the desktop
+```
+</details>
+
+<details>
+<summary><b>ssh-persist: "Permission denied" after deploying key</b></summary>
+
+Common causes:
+1. `authorized_keys` has immutable flag: `sudo chattr -i ~/.ssh/authorized_keys`
+2. `.ssh` directory wrong owner: `sudo chown user:user ~/.ssh ~/.ssh/authorized_keys`
+3. Wrong permissions: `chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys`
+</details>
+
+<details>
+<summary><b>tailscale: "relay hkg" instead of direct connection</b></summary>
+
+Devices are communicating through a relay instead of directly. This is slower.
+- Open UDP port 41641 on both devices' firewalls
+- Run `tailscale netcheck` to see what's blocking direct connections
+- Try restarting Tailscale: `sudo systemctl restart tailscaled`
+</details>
+
+<details>
+<summary><b>tailscale: Exit node set but internet still doesn't work</b></summary>
+
+1. Approve the exit node in [Tailscale admin console](https://login.tailscale.com/admin/machines)
+2. Enable IP forwarding on the exit node server
+3. Check with: `curl -s --connect-timeout 5 https://example.com`
+</details>
+
+<details>
+<summary><b>Windows: Cannot SSH to Windows machine</b></summary>
+
+Windows doesn't support Tailscale SSH. Use OpenSSH Server instead:
+```powershell
+# Install (Admin PowerShell)
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd
+Set-Service -Name sshd -StartupType 'Automatic'
+
+# Then from other devices:
+ssh windowsuser@<windows-tailscale-ip>
+```
+</details>
 
 ---
 
@@ -149,7 +442,7 @@ The `SKILL.md` file follows the Claude Code skill format with YAML frontmatter.
 
 ### 概述
 
-这是一个持续增长的 [Claude Code](https://claude.ai/code) 自定义技能集合。每个技能都是独立模块，可以单独安装使用。
+这是一个持续增长的 [Claude Code](https://claude.ai/code) 自定义技能集合。每个技能都是独立模块，可以单独安装使用。这些技能扩展了 Claude 的能力：操作远程 GUI 应用、管理 SSH 连接、配置 Tailscale 组网。
 
 ### 可用技能
 
@@ -159,108 +452,123 @@ The `SKILL.md` file follows the Claude Code skill format with YAML frontmatter.
 | [ssh-persist](skills/ssh-persist/) | 自动部署 SSH 密钥和持久化连接管理 | 免密码登录、防断连、加速 SSH 连接 |
 | [tailscale-mesh](skills/tailscale-mesh/) | Tailscale 组网：跨平台 SSH、出口节点、设备管理 | Windows/macOS/Linux 互相 SSH、通过出口节点访问外网 |
 
-### 快速安装
+### 快速开始（5 分钟）
+
+```bash
+# 1. 克隆仓库
+git clone https://github.com/18798aa12/claude-code-skills.git
+cd claude-code-skills
+
+# 2. 安装需要的技能
+cp -r skills/remote-gui ~/.claude/skills/
+cp -r skills/ssh-persist ~/.claude/skills/
+cp -r skills/tailscale-mesh ~/.claude/skills/
+
+# 3. 在 Claude Code 中使用
+# 直接描述你的需求，Claude 会自动选择合适的技能：
+#   "帮我配置到服务器 10.0.0.1 的免密 SSH"
+#   "在 GPU 服务器上启动 VPN 客户端并登录"
+#   "把 VPS 配成出口节点让 GPU 服务器能上网"
+```
+
+### 完整配置指南
+
+#### 前提条件
+
+- 已安装 [Claude Code](https://claude.ai/code) CLI
+- 有至少一台可 SSH 访问的远程 Linux 服务器
+- （可选）[Tailscale](https://tailscale.com/) 账号用于组网
+
+#### 第一步：安装技能
 
 ```bash
 # 克隆仓库
 git clone https://github.com/18798aa12/claude-code-skills.git
 
-# 安装单个技能
+# 方式 A：安装全部技能
+cp -r claude-code-skills/skills/* ~/.claude/skills/
+
+# 方式 B：安装指定技能
 cp -r claude-code-skills/skills/remote-gui ~/.claude/skills/
 
-# 或安装全部技能
-cp -r claude-code-skills/skills/* ~/.claude/skills/
+# 验证安装
+ls ~/.claude/skills/
 ```
 
-### 技能：remote-gui（远程 GUI 操作）
+#### 第二步：确保 SSH 可用
 
-**解决的问题**：Claude Code 无法操作远程服务器上的 GUI 应用。无显示器的服务器没有图形界面，VNC 等方案需要手动在浏览器中操作，Claude 无法控制。
+```bash
+# 测试能否连接到服务器
+ssh user@your-server "echo OK"
 
-**解决方案**：基于标准 Linux 工具的"截图-识别-点击"自动化循环：
-
-```
-┌─────────────────────────────────────────────────┐
-│              远程服务器                            │
-│                                                  │
-│  Xvfb (虚拟显示器 :99)                            │
-│  ├── fluxbox (轻量窗口管理器)                      │
-│  └── 你的 GUI 应用 (如 VPN 客户端、IDE)            │
-│                                                  │
-│  scrot → 截图.png    ← xdotool 点击/输入          │
-└───────────┬──────────────────────┬───────────────┘
-            │ SCP 下载              │ SSH 命令
-┌───────────▼──────────────────────▼───────────────┐
-│              Claude Code (本地)                    │
-│                                                  │
-│  读取截图 → 理解界面 → 决定操作 → 发送命令          │
-│  → 再截图 → 验证结果 → 循环                       │
-└──────────────────────────────────────────────────┘
+# 如果使用 Tailscale
+ssh user@100.x.x.x "echo OK"
 ```
 
-**工作流程**：
+#### 第三步：开始使用
 
-1. **环境准备**（首次自动完成）：在远程服务器安装 `Xvfb`、`fluxbox`、`scrot`、`xdotool`
-2. **启动**：创建虚拟显示器和窗口管理器，然后启动目标 GUI 应用
-3. **截图**：用 `scrot` 截取屏幕，通过 SCP 传到本地
-4. **识别**：Claude 读取截图，理解当前界面状态（按钮位置、输入框、文字等）
-5. **操作**：Claude 通过 `xdotool` 发送鼠标移动、点击和键盘输入
-6. **验证**：再次截图确认操作成功
-7. **循环**：重复直到任务完成
+启动 Claude Code，描述你的任务即可：
 
-**服务器要求**：
-- Ubuntu/Debian Linux，有 `apt` 包管理器
-- SSH 访问权限（密码或密钥均可）
-- 所需软件包会在首次使用时自动安装
-
-**使用示例**：
-
-```
-用户：帮我在 GPU 服务器上登录 VPN 客户端
-
-Claude：正在配置虚拟显示器...
-       [安装 xvfb, fluxbox, scrot, xdotool]
-       [启动 Xvfb :99 和 fluxbox]
-       [启动 VPN 客户端]
-       [截图 → 看到登录界面]
-       [点击邮箱输入框 → 输入邮箱]
-       [点击密码输入框 → 输入密码]
-       [点击登录按钮]
-       [截图 → 登录成功！]
+```bash
+claude
+# > "帮我在 GPU 服务器上登录 VPN 客户端"
+# > "配置免密 SSH 到 100.100.203.100"
+# > "设置 Tailscale 出口节点"
 ```
 
-### 技能：ssh-persist（SSH 持久化连接）
+### 各技能详细说明
 
-**解决的问题**：SSH 连接慢（每次都要输密码）、频繁断连（没有心跳保活）、重连太多次被 fail2ban 封禁。
+详见各技能目录下的 SKILL.md：
+- [remote-gui/SKILL.md](skills/remote-gui/SKILL.md) — 远程 GUI 操作的完整命令参考
+- [ssh-persist/SKILL.md](skills/ssh-persist/SKILL.md) — SSH 配置参数详解
+- [tailscale-mesh/SKILL.md](skills/tailscale-mesh/SKILL.md) — Tailscale 各平台配置和 SSH 互通方案
 
-**解决方案**：自动化 SSH 密钥部署 + 优化连接配置。
+### Tailscale 跨平台 SSH 互通方案
 
-**功能**：
+| 从 \ 到 | Linux | macOS | Windows |
+|---------|-------|-------|---------|
+| **Linux** | `ssh user@100.x.x.x`（Tailscale SSH 或 OpenSSH） | `ssh user@100.x.x.x`（Tailscale SSH） | `ssh user@100.x.x.x`（OpenSSH Server） |
+| **macOS** | `ssh user@100.x.x.x` | `ssh user@100.x.x.x` | `ssh user@100.x.x.x`（OpenSSH Server） |
+| **Windows** | `ssh user@100.x.x.x` | `ssh user@100.x.x.x` | `ssh user@100.x.x.x`（OpenSSH Server） |
 
-1. **密钥配置**：生成或复用现有的 Ed25519 SSH 密钥
-2. **密钥部署**：将公钥复制到远程服务器的 `authorized_keys`（自动处理权限问题、immutable 文件属性、所有者不匹配等）
-3. **SSH 配置**：创建/更新 `~/.ssh/config`，包含：
-   - 主机别名（如 `ssh l40` 代替 `ssh user@100.100.203.100`）
-   - 免密登录配置
-   - 心跳保活（15 秒间隔）
-   - TCP KeepAlive 防止空闲断连
-4. **验证**：测试连接并报告延迟
+**注意**：Windows 不支持 Tailscale SSH 作为服务端，必须启用 OpenSSH Server：
 
-**使用前后对比**：
+```powershell
+# 管理员 PowerShell
+Add-WindowsCapability -Online -Name OpenSSH.Server~~~~0.0.1.0
+Start-Service sshd
+Set-Service -Name sshd -StartupType 'Automatic'
+```
 
-| 指标 | 之前 | 之后 |
-|------|------|------|
-| 认证方式 | 密码（慢，触发 fail2ban） | SSH 密钥（即时，安全） |
-| 连接命令 | `ssh user@100.100.203.100` | `ssh l40` |
-| 心跳保活 | 无（空闲断连） | 每 15 秒 |
-| 连接速度 | ~10-30 秒 | ~3-4 秒 |
+### 常见问题
+
+| 问题 | 解决方案 |
+|------|---------|
+| 截图全黑 | 启动 fluxbox 窗口管理器 |
+| SSH 密钥被拒绝 | 检查 authorized_keys 权限和 immutable 属性 |
+| Tailscale 走中继（慢） | 开放 UDP 41641 端口实现直连 |
+| Windows 不能被 SSH | 安装 OpenSSH Server |
+| 出口节点设置后断连 | 加 `--exit-node-allow-lan-access=true` |
 
 ---
 
+## Contributing
+
+欢迎提交 PR 添加新技能或改进现有技能。
+
+每个技能是 `skills/` 下的一个目录，包含：
+```
+skills/my-skill/
+├── SKILL.md          # 技能定义（必须，Claude Code 读取）
+├── README.md         # 详细文档（可选）
+└── scripts/          # 辅助脚本（可选）
+```
+
 ## Contributors
 
-- **Zhou Qishun** ([@18798aa12](https://github.com/18798aa12)) — Author
+- **Jope Miler** ([@18798aa12](https://github.com/18798aa12)) — Author
 - **Claude** (Anthropic) — Co-developer
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License — see [LICENSE](LICENSE) for details.
