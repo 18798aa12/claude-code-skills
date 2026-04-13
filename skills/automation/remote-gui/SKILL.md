@@ -103,9 +103,36 @@ fluxbox &>/dev/null &
 ```
 
 ### Screenshot
+**CRITICAL: `scrot` PNG files contain ICC profile metadata that causes Claude API
+"Could not process image" errors. ALWAYS convert to JPEG with Pillow to strip ICC profile.**
+
 ```bash
-scrot /tmp/screenshot.png
-scp server:/tmp/screenshot.png /local/path/
+# Take screenshot and convert to JPEG (strips ICC profile)
+scrot /tmp/screenshot.png && python3 -c "
+from PIL import Image
+Image.open('/tmp/screenshot.png').convert('RGB').save('/tmp/screenshot.jpg', 'JPEG', quality=95)
+" && rm /tmp/screenshot.png
+
+# Transfer JPEG (not PNG!) to local
+scp server:/tmp/screenshot.jpg /local/path/
+```
+
+**If you accidentally sent a bad PNG to Claude:**
+1. `/restore` — **best option**, rolls back to before the bad image entered context
+2. `/compact` — compresses history, bad image disappears but loses detail
+3. `/clear` or new conversation — last resort
+
+**Prevention (PostToolUse hook):**
+Add to settings.json to auto-convert every screenshot after Bash commands:
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Bash",
+      "command": "python3 -c \"import glob; from PIL import Image; [Image.open(f).convert('RGB').save(f.replace('.png','.jpg'),'JPEG',quality=95) for f in glob.glob('/tmp/*.png')]\" 2>/dev/null || true"
+    }]
+  }
+}
 ```
 
 ### Mouse
