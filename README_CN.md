@@ -12,6 +12,7 @@
 |------|------|---------|
 | [cf-pages-deploy](skills/cloudflare/cf-pages-deploy/) | Cloudflare Pages 部署，自动修复 1101 错误 | 部署 Web 应用和代理服务，理解 Pages vs Workers 取舍 |
 | [cloudflare-tunnel](skills/cloudflare/cloudflare-tunnel/) | cloudflared 隧道搭建 + WebSocket 4 大坑修复 | 暴露本地服务、修复 WebSocket 不稳定、多服务隧道 |
+| [cf-auto-checkin](skills/cloudflare/cf-auto-checkin/) | 自动签到 Worker + TG 通知，两种登录模式 | 每日自动签到、Cookie/API 登录、Cron 定时、多目标 TG 推送 |
 
 ### 网络
 
@@ -90,6 +91,7 @@ cp -r skills/cloudflare/cf-pages-deploy ~/.claude/skills/
 - **Workers 1101 封锁** → cf-pages-deploy
 - **macOS AX API 故障** → macos-accessibility
 - **15+ 次 Agent 安全事故** → proxy-multi-platform
+- **5 种 Cookie 解析策略** → cf-auto-checkin
 
 ## 贡献
 
@@ -99,7 +101,8 @@ cp -r skills/cloudflare/cf-pages-deploy ~/.claude/skills/
 skills/
 ├── cloudflare/          # Cloudflare 生态
 │   ├── cf-pages-deploy/
-│   └── cloudflare-tunnel/
+│   ├── cloudflare-tunnel/
+│   └── cf-auto-checkin/
 ├── networking/          # 网络与连接
 │   ├── ssh-persist/
 │   ├── tailscale-mesh/

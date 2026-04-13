@@ -14,6 +14,7 @@ A growing collection of custom skills for [Claude Code](https://claude.ai/code),
 |-------|-------------|----------|
 | [cf-pages-deploy](skills/cloudflare/cf-pages-deploy/) | Deploy services on Cloudflare Pages with auto-fix for 1101 errors | Deploy web apps, proxy services, understand Pages vs Workers trade-offs |
 | [cloudflare-tunnel](skills/cloudflare/cloudflare-tunnel/) | Set up cloudflared tunnels with WebSocket pitfall fixes | Expose local services, fix WebSocket instability, multi-service tunnels |
+| [cf-auto-checkin](skills/cloudflare/cf-auto-checkin/) | Auto-checkin Workers with TG notifications, two login patterns | Daily auto sign-in, cookie-based or API login, cron triggers, multi-target TG push |
 
 ### Networking
 
@@ -92,6 +93,7 @@ These skills encode lessons learned from:
 - **Workers 1101 blocking** → cf-pages-deploy
 - **macOS AX API failures** → macos-accessibility
 - **15+ agent safety incidents** → proxy-multi-platform
+- **5 cookie parsing strategies** → cf-auto-checkin
 
 ## Contributing
 
@@ -101,7 +103,8 @@ PRs welcome! Skills are organized by category under `skills/`:
 skills/
 ├── cloudflare/          # Cloudflare ecosystem
 │   ├── cf-pages-deploy/
-│   └── cloudflare-tunnel/
+│   ├── cloudflare-tunnel/
+│   └── cf-auto-checkin/
 ├── networking/          # Network & connectivity
 │   ├── ssh-persist/
 │   ├── tailscale-mesh/
