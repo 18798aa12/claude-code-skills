@@ -2,7 +2,7 @@
 name: vps-singbox
 description: Deploy sing-box proxy server on VPS with 6 protocols (VLESS Reality, Hysteria2, TUIC, Trojan WS, Trojan CDN, AnyTLS). Covers multi-node management, Tailscale mesh, monitoring, and troubleshooting from 13-node production experience.
 author: Jope Miler, Claude
-version: 1.1.0
+version: 1.2.0
 tags: [vps, sing-box, proxy, vless, reality, hysteria2, tuic, trojan, anytls, tailscale, server]
 ---
 
@@ -443,8 +443,13 @@ nc -zu server-ip 8443
 # Check 1: Is sing-box listening on 8444?
 ss -tlnp | grep 8444
 
-# Check 2: Is UFW allowing TCP 8444?
+# Check 2: OS firewall allowing TCP 8444?
+# UFW:
 sudo ufw status | grep 8444
+# firewalld (Oracle Cloud uses this, not UFW):
+sudo firewall-cmd --list-ports | tr ' ' '\n' | grep 8444
+# If missing:
+sudo firewall-cmd --permanent --add-port=8444/tcp && sudo firewall-cmd --reload
 
 # Check 3: Cloud provider firewall (Alibaba/Oracle need manual rule)
 # AnyTLS uses TCP 8444 — add ingress rule in cloud console
@@ -458,22 +463,88 @@ sudo ufw status | grep 8444
 grep -A5 anytls /etc/sing-box/config.json | grep password
 ```
 
-### Cloud Provider Double Firewall
+### AnyTLS — TCP Fast Open crash (sing-box Issue #3459)
 
 ```bash
-# Symptom: Ports open in UFW but still can't connect
-# Cause: Cloud provider has its own firewall (AWS Security Groups, 
-#         Oracle Security Lists, Alibaba Cloud Security Groups)
+# Symptom: AnyTLS inbound crashes or connection drops intermittently
+# Cause: sing-box AnyTLS + tcp_fast_open = known crash bug
+# Affects: sing-box 1.12.0+ on Linux (especially ARM64)
 
-# Fix: Open ports in BOTH:
-# 1. OS firewall (UFW) — sudo ufw allow PORT
+# Check current setting
+sysctl net.ipv4.tcp_fastopen
+
+# Fix: Disable tcp_fast_open
+sudo sysctl -w net.ipv4.tcp_fastopen=0
+
+# Persist across reboot
+echo "net.ipv4.tcp_fastopen=0" | sudo tee -a /etc/sysctl.conf
+```
+
+### Oracle Cloud — MTU 9000 Jumbo Frame causes TLS failure
+
+```bash
+# Symptom: TLS handshake fails from external, works locally
+# Cause: Oracle Cloud default MTU is 9000 (Jumbo Frame), but internet
+#        path MTU is typically 1500. Large TLS packets get silently dropped.
+
+# Check MTU
+ip link show | grep enp0s6
+
+# Fix: Lower to 1500
+sudo ip link set enp0s6 mtu 1500
+
+# Persist via NetworkManager
+sudo nmcli connection modify 'Wired Connection' 802-3-ethernet.mtu 1500
+
+# Or persist via netplan (Ubuntu):
+# In /etc/netplan/xxx.yaml, add mtu: 1500 under the interface
+```
+
+### Oracle Cloud — firewalld vs UFW
+
+```bash
+# Oracle Cloud Linux images use firewalld (nftables), NOT UFW
+# Common mistake: opening ports in VCN Security List but not in firewalld
+# This causes "No route to host" errors
+
+# Check which firewall is active
+sudo systemctl is-active firewalld  # Oracle default
+sudo systemctl is-active ufw        # Not used on Oracle
+
+# List all open ports
+sudo firewall-cmd --list-ports
+
+# Open a port
+sudo firewall-cmd --permanent --add-port=PORT/tcp
+sudo firewall-cmd --reload
+
+# Verify: compare sing-box listening ports vs firewalld
+sudo ss -tlnup | grep sing-box | awk '{print $1, $5}'
+sudo firewall-cmd --list-ports
+# Every sing-box listen port MUST appear in firewalld
+```
+
+### Cloud Provider Double Firewall (Triple on some!)
+
+```bash
+# Symptom: Ports open in OS firewall but still can't connect
+# Cause: Cloud provider has its own firewall layer(s)
+
+# Fix: Open ports in ALL layers:
+# 1. OS firewall:
+#    - UFW (Debian/Ubuntu default): sudo ufw allow PORT
+#    - firewalld (Oracle/RHEL default): sudo firewall-cmd --permanent --add-port=PORT/tcp
 # 2. Cloud console firewall — add ingress rule
 
-# Common providers with double firewall:
+# Common providers and their firewall layers:
 # - AWS: Security Groups
-# - Oracle Cloud: VCN Security Lists
-# - Alibaba Cloud: Security Groups + Cloud Shield
+# - Oracle Cloud: VCN Security Lists + firewalld (NOT UFW!)
+# - Alibaba Cloud: Security Groups + Cloud Shield (blocks port 22 from some IPs)
 # - Google Cloud: VPC Firewall Rules
+
+# Quick diagnostic: "No route to host" = cloud/OS firewall blocking
+#                   "Connection refused" = service not running
+#                   "Connection timeout" = ISP/GFW blocking
 ```
 
 ### Alibaba Cloud Specific Issues
