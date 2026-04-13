@@ -1,19 +1,19 @@
 ---
 name: vps-singbox
-description: Deploy sing-box proxy server on VPS with 5 protocols (VLESS Reality, Hysteria2, TUIC, Trojan WS, Trojan CDN). Covers multi-node management, Tailscale mesh, monitoring, and troubleshooting from 13-node production experience.
+description: Deploy sing-box proxy server on VPS with 6 protocols (VLESS Reality, Hysteria2, TUIC, Trojan WS, Trojan CDN, AnyTLS). Covers multi-node management, Tailscale mesh, monitoring, and troubleshooting from 13-node production experience.
 author: Jope Miler, Claude
-version: 1.0.0
+version: 1.1.0
 tags: [vps, sing-box, proxy, vless, reality, hysteria2, tuic, trojan, tailscale, server]
 ---
 
 # VPS sing-box Multi-Protocol Proxy Server
 
-Deploy a production-ready proxy server on VPS using sing-box with 5 protocols. Covers initial server hardening, protocol configuration, CDN relay, Tailscale mesh networking, monitoring, and automated troubleshooting. Based on real experience managing 13 production nodes across 8 countries.
+Deploy a production-ready proxy server on VPS using sing-box with 6 protocols. Covers initial server hardening, protocol configuration, CDN relay, Tailscale mesh networking, monitoring, and automated troubleshooting. Based on real experience managing 13 production nodes across 8 countries.
 
 ## When to use
 
 - Setting up a new VPS as a proxy server
-- Adding protocols (VLESS, Hysteria2, TUIC, Trojan) to an existing server
+- Adding protocols (VLESS, Hysteria2, TUIC, Trojan, AnyTLS) to an existing server
 - Configuring Cloudflare CDN relay for Trojan+WS
 - Building a Tailscale mesh between multiple VPS nodes
 - Troubleshooting connection issues with specific protocols
@@ -28,6 +28,7 @@ Deploy a production-ready proxy server on VPS using sing-box with 5 protocols. C
 | TUIC | 8388 | QUIC/UDP | Good | ❌ | ★★★★ |
 | Trojan+WS+TLS | 57712 | WebSocket+TLS | Very Good | ❌ (direct) | ★★★★ |
 | Trojan+WS+TLS (CDN) | 2053 | WebSocket+TLS | Excellent (via CF) | ✅ | ★★★ |
+| AnyTLS | 8444 | TCP+TLS (padding) | Excellent (resists DPI) | ❌ | ★★★★ |
 
 **Recommended combo:** VLESS Reality (primary) + Hysteria2 (UDP-optimized) + Trojan CDN (anti-blocking fallback)
 
@@ -254,6 +255,23 @@ sudo chmod 600 /etc/sing-box/certs/server.key
         "type": "ws",
         "path": "/trojan-cdn"
       },
+      "tls": {
+        "enabled": true,
+        "certificate_path": "/etc/sing-box/certs/server.crt",
+        "key_path": "/etc/sing-box/certs/server.key"
+      }
+    },
+    {
+      "type": "anytls",
+      "tag": "anytls-in",
+      "listen": "::",
+      "listen_port": 8444,
+      "users": [
+        {
+          "name": "user",
+          "password": "<ANYTLS_PASSWORD>"
+        }
+      ],
       "tls": {
         "enabled": true,
         "certificate_path": "/etc/sing-box/certs/server.crt",
@@ -559,6 +577,9 @@ US-HY2 = hysteria2, server-ip, 8443, password=<PASSWORD>, skip-cert-verify=true
 
 # TUIC
 US-TUIC = tuic, server-ip, 8388, token=<UUID>:<PASSWORD>, alpn=h3, skip-cert-verify=true
+
+# AnyTLS (Surge Mac 6.4.3+ / iOS 5.17.0+)
+US-AnyTLS = anytls, server-ip, 8444, password=<PASSWORD>, sni=bing.com, skip-cert-verify=true
 ```
 
 ### Clash/Mihomo
@@ -591,5 +612,13 @@ proxies:
     uuid: <UUID>
     password: <PASSWORD>
     alpn: [h3]
+    skip-cert-verify: true
+
+  - name: US-AnyTLS
+    type: anytls
+    server: server-ip
+    port: 8444
+    password: <PASSWORD>
+    sni: bing.com
     skip-cert-verify: true
 ```
