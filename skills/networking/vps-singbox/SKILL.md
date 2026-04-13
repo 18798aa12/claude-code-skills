@@ -3,7 +3,7 @@ name: vps-singbox
 description: Deploy sing-box proxy server on VPS with 6 protocols (VLESS Reality, Hysteria2, TUIC, Trojan WS, Trojan CDN, AnyTLS). Covers multi-node management, Tailscale mesh, monitoring, and troubleshooting from 13-node production experience.
 author: Jope Miler, Claude
 version: 1.1.0
-tags: [vps, sing-box, proxy, vless, reality, hysteria2, tuic, trojan, tailscale, server]
+tags: [vps, sing-box, proxy, vless, reality, hysteria2, tuic, trojan, anytls, tailscale, server]
 ---
 
 # VPS sing-box Multi-Protocol Proxy Server
@@ -30,7 +30,7 @@ Deploy a production-ready proxy server on VPS using sing-box with 6 protocols. C
 | Trojan+WS+TLS (CDN) | 2053 | WebSocket+TLS | Excellent (via CF) | ✅ | ★★★ |
 | AnyTLS | 8444 | TCP+TLS (padding) | Excellent (resists DPI) | ❌ | ★★★★ |
 
-**Recommended combo:** VLESS Reality (primary) + Hysteria2 (UDP-optimized) + Trojan CDN (anti-blocking fallback)
+**Recommended combo:** VLESS Reality (primary) + Hysteria2 (UDP-optimized) + AnyTLS (DPI-resistant fallback) + Trojan CDN (CF relay last resort)
 
 ## Step 1: Server Hardening
 
@@ -70,6 +70,7 @@ sudo ufw allow 8443/udp    # Hysteria2
 sudo ufw allow 8388/udp    # TUIC
 sudo ufw allow 57712/tcp   # Trojan direct
 sudo ufw allow 2053/tcp    # Trojan CDN
+sudo ufw allow 8444/tcp    # AnyTLS
 
 # Allow monitoring
 sudo ufw allow 45876/tcp   # Beszel agent (optional)
@@ -433,6 +434,28 @@ nc -zu server-ip 8443
 # Also check: CF SSL mode should be "Full" (not "Flexible")
 # Flexible = CF connects to origin via HTTP → breaks TLS
 # Full = CF connects to origin via HTTPS → correct
+```
+
+### AnyTLS — Connection refused or timeout
+
+```bash
+# Symptom: AnyTLS node shows timeout in client
+# Check 1: Is sing-box listening on 8444?
+ss -tlnp | grep 8444
+
+# Check 2: Is UFW allowing TCP 8444?
+sudo ufw status | grep 8444
+
+# Check 3: Cloud provider firewall (Alibaba/Oracle need manual rule)
+# AnyTLS uses TCP 8444 — add ingress rule in cloud console
+
+# Check 4: Client version
+# Surge: requires Mac 6.4.3+ / iOS 5.17.0+
+# Clash/Mihomo: latest version required
+# QX: NOT SUPPORTED (no AnyTLS in Quantumult X)
+
+# Check 5: Password mismatch
+grep -A5 anytls /etc/sing-box/config.json | grep password
 ```
 
 ### Cloud Provider Double Firewall
