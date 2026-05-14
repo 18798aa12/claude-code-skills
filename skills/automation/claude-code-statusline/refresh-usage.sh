@@ -7,7 +7,9 @@ mkdir -p "$CACHE_DIR" 2>/dev/null
 CACHE_FILE="$CACHE_DIR/usage.env"
 TMP_FILE="$CACHE_FILE.tmp.$$"
 
-export PATH="$HOME/.nvm/versions/node/v24.14.0/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin"
+# Auto-detect Node install (nvm latest, homebrew, system) so npx is found under launchd
+NODE_BIN="$(ls -dt $HOME/.nvm/versions/node/*/bin 2>/dev/null | head -1)"
+export PATH="${NODE_BIN}:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
 
 SINCE=$(date -v-6d +%Y%m%d 2>/dev/null || date -d '6 days ago' +%Y%m%d)
 UNTIL=$(date +%Y%m%d)
