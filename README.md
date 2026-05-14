@@ -31,6 +31,7 @@ A growing collection of custom skills for [Claude Code](https://claude.ai/code),
 |-------|-------------|----------|
 | [remote-gui](skills/automation/remote-gui/) | Operate GUI applications on headless Linux servers via SSH | Launch desktop apps, click buttons, fill forms on servers without monitors |
 | [macos-accessibility](skills/automation/macos-accessibility/) | macOS Accessibility API automation with 3-layer fallback strategy | Build AI agents that control Mac apps, handle CJK input, AX API failures |
+| [claude-code-statusline](skills/automation/claude-code-statusline/) | Real-time 5h/7d Anthropic plan usage statusline (scrapes claude.ai dashboard, defeats CF + region-block, auto-rotates session) | See exact `% used` and reset times in your terminal, never get surprised by weekly limit |
 
 ### Messaging
 

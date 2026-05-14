@@ -29,6 +29,7 @@
 |------|------|---------|
 | [remote-gui](skills/automation/remote-gui/) | 通过 SSH 在无显示器的 Linux 服务器上操作 GUI 应用 | 在 GPU 服务器上启动桌面程序、点击按钮、填写表单 |
 | [macos-accessibility](skills/automation/macos-accessibility/) | macOS Accessibility API 自动化 + 三层回退策略 | 构建控制 Mac 应用的 AI Agent、处理中文输入、AX API 失败 |
+| [claude-code-statusline](skills/automation/claude-code-statusline/) | 实时 5h/7d Anthropic 套餐用量 statusline (爬 claude.ai 内部 API, 绕 CF + 区域封锁, sessionKey 自动续) | 终端直接看准确 `已用 %` 和重置时刻, 不再被周限额突袭 |
 
 ### 通讯
 
