@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Install:
+    cp com.claude.fetch-real-usage.plist ~/Library/LaunchAgents/
+    sed -i '' "s|/Users/YOUR_USER|$HOME|g" ~/Library/LaunchAgents/com.claude.fetch-real-usage.plist
+    launchctl load ~/Library/LaunchAgents/com.claude.fetch-real-usage.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.claude.fetch-real-usage</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/YOUR_USER/.claude/fetch-real-usage.sh</string>
+    </array>
+    <key>StartInterval</key>
+    <integer>60</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/claude-fetch-real-usage.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/YOUR_USER/Library/Logs/claude-fetch-real-usage.log</string>
+</dict>
+</plist>

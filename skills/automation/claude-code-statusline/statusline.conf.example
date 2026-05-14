@@ -1,0 +1,22 @@
+# Claude Code statusline config
+# Copy to ~/.claude/statusline.conf, then chmod 600.
+
+# ─── Plan tier (only used as fallback if scrape fails) ───────────────
+# pro    — $20/mo  — 5h~$8,   7d~$50
+# max5   — $100/mo — 5h~$40,  7d~$280
+# max20  — $200/mo — 5h~$160, 7d~$1120
+CC_PLAN=max5
+
+# ─── sessionKey FALLBACK (usually leave empty) ───────────────────────
+# fetch-real-usage.sh reads live from Chromium browser cookie DB by default
+# (auto-rotates as Anthropic refreshes the cookie). Only set this if NO
+# Chromium browser is installed or cookie DB is inaccessible.
+#
+# How to get one: claude.ai → F12 → Application → Cookies → sessionKey value
+SESSION_KEY=""
+
+# ─── Org UUID (auto-detected from lastActiveOrg cookie) ──────────────
+# Override only if you have multiple orgs and the active-org detection picks wrong.
+# Find via: curl -s -H "Authorization: Bearer <oauth>" \
+#           https://api.anthropic.com/api/oauth/profile | jq .organization.uuid
+ORG_UUID=""
